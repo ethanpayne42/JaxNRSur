@@ -214,14 +214,14 @@ class NRHybSur3dq8Model(eqx.Module):
 
 class NRSur7dq4Model(eqx.Module):
     data: NRSur7dq4DataLoader
-    harmonics: list[SpinWeightedSphericalHarmonics]
+    positive_harmonics: list[SpinWeightedSphericalHarmonics]
     negative_harmonics: list[SpinWeightedSphericalHarmonics]
-    modelist_dict: dict
+    mode_list_dict: dict
     n_modes: int
 
     def __init__(
         self,
-        modelist: list[tuple[int, int]] = [
+        mode_list: list[tuple[int, int]] = [
             (2, 0),
             (2, 1),
             (2, 2),
@@ -236,17 +236,17 @@ class NRSur7dq4Model(eqx.Module):
             (4, 4),
         ],
     ):
-        self.data = NRSur7dq4DataLoader(modelist=modelist)
-        self.harmonics = []
+        self.data = NRSur7dq4DataLoader(mode_list=mode_list)
+        self.positive_harmonics = []
         self.negative_harmonics = []
 
-        self.n_modes = len(modelist)
-        self.modelist_dict = {}
-        for i in range(len(modelist)):
-            self.modelist_dict[modelist[i]] = i
+        self.n_modes = len(mode_list)
+        self.mode_list_dict = {}
+        for i in range(len(mode_list)):
+            self.mode_list_dict[mode_list[i]] = i
 
-        for mode in modelist:
-            self.harmonics.append(SpinWeightedSphericalHarmonics(-2, mode[0], mode[1]))
+        for mode in mode_list:
+            self.positive_harmonics.append(SpinWeightedSphericalHarmonics(-2, mode[0], mode[1]))
             self.negative_harmonics.append(
                 SpinWeightedSphericalHarmonics(-2, mode[0], -mode[1])
             )
@@ -393,7 +393,7 @@ class NRSur7dq4Model(eqx.Module):
     def get_coorb_hlm(self, lambdas, mode=(2, 2)):
         # TODO bad if statement...
 
-        idx = self.modelist_dict[mode]
+        idx = self.mode_list_dict[mode]
         if mode[1] != 0:
             h_lm_plus = self.construct_hlm_from_bases(
                 lambdas,
@@ -503,7 +503,7 @@ class NRSur7dq4Model(eqx.Module):
         coorb_h_pos = jnp.array(
             []
         )  # TODO this is just to get it to pass the precommit...
-        for mode in self.modelist_dict.keys():
+        for mode in self.mode_list_dict.keys():
             # get the coorb hlms
             coorb_h_pos, coorb_h_neg = self.get_coorb_hlm(lambdas, mode=mode)
 

@@ -188,7 +188,7 @@ class NRSur7dq4DataLoader(eqx.Module):
 
     def __init__(
         self,
-        modelist: list[tuple[int, int]] = [
+        mode_list: list[tuple[int, int]] = [
             (2, 0),
             (2, 1),
             (2, 2),
@@ -232,9 +232,9 @@ class NRSur7dq4DataLoader(eqx.Module):
                     )
 
         self.modes = []
-        for i in range(len(modelist)):
+        for i in range(len(mode_list)):
             self.modes.append(
-                self.read_single_mode(data, modelist[i], n_max=basis_nmax)
+                self.read_single_mode(data, mode_list[i], n_max=basis_nmax)
             )
 
         self.coorb = self.read_coorb(data, coorb_nmax)
