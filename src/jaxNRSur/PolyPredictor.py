@@ -31,7 +31,6 @@ class PolyPredictor(eqx.Module):
         coefs: Float[Array, " n_sum"],
         bfOrders: Float[Array, " n_sum n_lambda"],
     ) -> Float[Array, " 1"]:
-        # TODO: Check this Ethan
         return jnp.dot(
             coefs,
             jnp.prod(
@@ -47,8 +46,13 @@ class PolyPredictor(eqx.Module):
     def n_nodes(self) -> int:
         return self.coefs.shape[0]
 
-
 @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
+def evaluate_ensemble_dynamics(
+    predictors: PolyPredictor, inputs: Float[Array, " n_lambda"]
+) -> Float[Array, " n_predictor"]:
+    return predictors(inputs)
+
+@eqx.filter_vmap(in_axes=(eqx.if_array(0), eqx.if_array(0)))
 def evaluate_ensemble(
     predictors: PolyPredictor, inputs: Float[Array, " n_lambda"]
 ) -> Float[Array, " n_predictor"]:
