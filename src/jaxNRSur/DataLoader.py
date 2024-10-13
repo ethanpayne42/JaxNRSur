@@ -174,7 +174,42 @@ class NRHybSur3dq8DataLoader(eqx.Module):
         return result
 
 
+NRSUR7DQ4_MODES = [
+    (2, 0),
+    (2, 1),
+    (2, 2),
+    (3, 0),
+    (3, 1),
+    (3, 2),
+    (3, 3),
+    (4, 0),
+    (4, 1),
+    (4, 2),
+    (4, 3),
+    (4, 4),
+]
+
+
 class NRSur7dq4DataLoader(eqx.Module):
+    """Loader for NRSur7dq4 waveform data.
+
+    TODO: fix this automatic docstring!
+
+    Attributes
+    ----------
+    t_coorb : Float[Array, " n_sample"]
+        Time samples for the coorbital-frame data.
+    t_ds : Float[Array, " n_dynam"]
+        Time samples for the dynamical variables.
+    diff_t_ds : Float[Array, " n_dynam"]
+        Time differences between the dynamical variables.
+    modes : list[dict]
+        List of dictionaries containing the mode data.
+    coorb : PolyPredictor
+        Polynomial predictor for the coorbital-frame data.
+    coorb_nmax : int
+        Maximum polynomial order for the coorbital-frame data.
+    """
     t_coorb: Float[Array, " n_sample"]
     t_ds: Float[Array, " n_dynam"]
     diff_t_ds: Float[Array, " n_dynam"]
@@ -185,40 +220,31 @@ class NRSur7dq4DataLoader(eqx.Module):
     @property
     def coorb_nmax(self) -> int:
         return self.coorb.n_max
-
+    
     def __init__(
         self,
-        mode_list: list[tuple[int, int]] = [
-            (2, 0),
-            (2, 1),
-            (2, 2),
-            (3, 0),
-            (3, 1),
-            (3, 2),
-            (3, 3),
-            (4, 0),
-            (4, 1),
-            (4, 2),
-            (4, 3),
-            (4, 4),
-        ],
+        mode_list: list[tuple[int, int]] = NRSUR7DQ4_MODES,
+        # I'm pretty sure we don't need the download=1
+        url: str = "https://zenodo.org/records/3348115/files/NRSur7dq4.h5?download=1",
     ) -> None:
-        """
+        f"""
         Initialize the data loader for the NRSur7dq4 model
 
-        Args:
-            path (str): Path to the HDF5 file
-            modelist (list[tuple[int, int]], optional): List of modes to load.
-            Defaults to [(2, 0), (2, 1), (2, 2), (3, 0), (3, 1),
-                (3, 2), (3, 3), (4, 0), (4, 1), (4, 2), (4, 3), (4, 4)].
+        Arguments
+        ---------
+        mode_list : list[tuple[int, int]]
+            List of tuples representing the modes to load; defaults to
+            all modes in the NRSur7dq4 model: {NRSUR7DQ4_MODES}.
         """
-        h5_file = load_data("https://zenodo.org/records/3348115/files/NRSur7dq4.h5?download=1", "NRSur7dq4.h5")
+        h5_file = load_data(url, "NRSur7dq4.h5")
 
         data = h5Group_to_dict(h5_file)
         self.t_coorb = jnp.array(data["t_coorb"])
         self.t_ds = jnp.array(data["t_ds"])
         self.diff_t_ds = jnp.diff(self.t_ds)
 
+        # get maximum size of nodes for coorbital frame evolution
+        # and strain bases
         coorb_nmax = -100
         basis_nmax = -100
         for key in data:
@@ -231,12 +257,14 @@ class NRSur7dq4DataLoader(eqx.Module):
                         basis_nmax, data[key]["nodeModelers"][coorb_key].shape[0]
                     )
 
+        # load data for each nonnegative-m mode
         self.modes = []
-        for i in range(len(mode_list)):
+        for m in mode_list:
             self.modes.append(
-                self.read_single_mode(data, mode_list[i], n_max=basis_nmax)
+                self.read_single_mode(data, m, n_max=basis_nmax)
             )
 
+        # load data for the coorbital-frame evolution
         self.coorb = self.read_coorb(data, coorb_nmax)
 
     def read_mode_function(self, node_data: dict, n_max: int) -> dict:
@@ -305,6 +333,15 @@ class NRSur7dq4DataLoader(eqx.Module):
         return result
 
     def read_coorb(self, file: dict, n_max: int) -> PolyPredictor:
+        """Load polynomial predictor for the coorbital-frame data.
+
+        Arguments
+        ---------
+        file : dict
+            Dictionary containing the data.
+        n_max : int
+            Maximum polynomial order.
+        """
         result = []
 
         tags = [

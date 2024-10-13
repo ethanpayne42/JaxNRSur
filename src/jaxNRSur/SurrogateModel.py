@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import jax
 from jax.scipy.special import factorial, gammaln
 from jaxNRSur.Spline import CubicSpline
-from jaxNRSur.DataLoader import NRHybSur3dq8DataLoader, NRSur7dq4DataLoader
+from jaxNRSur.DataLoader import NRHybSur3dq8DataLoader, NRSur7dq4DataLoader, NRSUR7DQ4_MODES
 from jaxNRSur.Harmonics import SpinWeightedSphericalHarmonics
 from jaxNRSur.PolyPredictor import PolyPredictor, evaluate_ensemble, evaluate_ensemble_dynamics
 from jaxtyping import Array, Float, Int
@@ -221,6 +221,24 @@ class NRHybSur3dq8Model(eqx.Module):
 
 
 class NRSur7dq4Model(eqx.Module):
+    """Container for NRSur7dq4 surrogate model.
+
+    Attributes
+    ----------
+    data : NRSur7dq4DataLoader
+        Data loader for the NRSur7dq4 data.
+    mode_list_dict : dict
+        Dictionary mapping mode tuple to index, for nonnegative modes.
+    mode_list_dict_extended : dict
+        Dictionary mapping mode tuple to index, including negative
+        ``m`` modes.
+    harmonics : list[SpinWeightedSphericalHarmonics]
+        List of spherical harmonics associated with the modes.
+    n_modes : int
+        Number of nonnegative modes in the model.
+    n_modes_extended : int
+        Total number of modes in the model.
+    """
     data: NRSur7dq4DataLoader
     mode_list_dict: dict
     mode_list_dict_extended: dict
@@ -230,21 +248,17 @@ class NRSur7dq4Model(eqx.Module):
 
     def __init__(
         self,
-        mode_list: list[tuple[int, int]] = [
-            (2, 0),
-            (2, 1),
-            (2, 2),
-            (3, 0),
-            (3, 1),
-            (3, 2),
-            (3, 3),
-            (4, 0),
-            (4, 1),
-            (4, 2),
-            (4, 3),
-            (4, 4),
-        ],
+        mode_list: list[tuple[int, int]] = NRSUR7DQ4_MODES,
     ):
+        """Initialize NRSur7dq4Model.
+
+        Arguments
+        ---------
+        mode_list : list[tuple[int, int]], optional
+            List of modes to be used; defaults to all modes allowed by this
+            model: :math:`(\\ell, m)` with :math:`\\ell \\in [2, 3, 4]` and
+            :math:`m \\in [0, \\ell]`.
+        """
         self.data = NRSur7dq4DataLoader(mode_list=mode_list)
         self.harmonics = []
 
