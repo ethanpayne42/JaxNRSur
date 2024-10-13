@@ -41,15 +41,17 @@ def download_from_zenodo(url: str, local_filename: str) -> bool:
         print(f"File downloaded successfully and saved as {local_filename}")
         return True
     else:
-        print(f"Failed to download the file. Status code: {response.status_code}")
+        print(f"Failed to download the file. Status code: {
+              response.status_code}")
         return False
+
 
 def load_data(url: str, local_filename: str) -> h5py.File:
     home_directory = os.environ["HOME"]
     os.makedirs(home_directory+"/.jaxNRSur", exist_ok=True)
     try:
         print("Try loading file from cache")
-        data = h5py.File(home_directory + "/.jaxNRSur/"+ local_filename, "r")
+        data = h5py.File(home_directory + "/.jaxNRSur/" + local_filename, "r")
         print("Cache found and loading data")
     except:
         print("Cache not found, downloading from Zenodo")
@@ -59,10 +61,12 @@ def load_data(url: str, local_filename: str) -> h5py.File:
         )
         if downloaded:
             print("Download successful, loading data")
-            data = h5py.File(home_directory + "/.jaxNRSur/" + local_filename, "r")
+            data = h5py.File(home_directory + "/.jaxNRSur/" +
+                             local_filename, "r")
         else:
             raise KeyError("Cannot download data from zenodo")
     return data
+
 
 def h5Group_to_dict(h5_group: h5py.Group) -> dict:
     result = {}
@@ -98,7 +102,8 @@ class NRHybSur3dq8DataLoader(eqx.Module):
         ],
     ) -> None:
 
-        data = load_data("https://zenodo.org/records/3348115/files/NRHybSur3dq8.h5?download=1", "NRHybSur3dq8.h5")
+        data = load_data(
+            "https://zenodo.org/records/3348115/files/NRHybSur3dq8.h5?download=1", "NRHybSur3dq8.h5")
         self.sur_time = jnp.array(data["domain"])
 
         self.modes = []
@@ -131,7 +136,8 @@ class NRHybSur3dq8DataLoader(eqx.Module):
 
                 result["predictors"] = predictors
                 result["eim_basis"] = jnp.array(node_data["ei_basis"])
-                result["name"] = node_data["name"][()].decode("utf-8")  # type: ignore
+                result["name"] = node_data["name"][()].decode(
+                    "utf-8")  # type: ignore
                 return result
             else:
                 raise ValueError("n_nodes data doesn't exist")
@@ -152,14 +158,18 @@ class NRHybSur3dq8DataLoader(eqx.Module):
         data = file["sur_subs/%s/func_subs" % (h5_mode_tuple[mode])]
         assert isinstance(data, h5py.Group), "Mode data is not a group"
         if mode == (2, 2):
-            result["phase"] = self.read_function(data["ITEM_0"])  # type: ignore
+            result["phase"] = self.read_function(
+                data["ITEM_0"])  # type: ignore
             result["amp"] = self.read_function(data["ITEM_1"])  # type: ignore
         else:
             if mode[1] != 0:
-                result["real"] = self.read_function(data["ITEM_0"])  # type: ignore
-                result["imag"] = self.read_function(data["ITEM_1"])  # type: ignore
+                result["real"] = self.read_function(
+                    data["ITEM_0"])  # type: ignore
+                result["imag"] = self.read_function(
+                    data["ITEM_1"])  # type: ignore
             else:
-                local_function = self.read_function(data["ITEM_0"])  # type: ignore
+                local_function = self.read_function(
+                    data["ITEM_0"])  # type: ignore
                 if local_function["name"] == "re":
                     result["real"] = local_function
                     result["imag"] = self.make_empty_function(
@@ -220,7 +230,7 @@ class NRSur7dq4DataLoader(eqx.Module):
     @property
     def coorb_nmax(self) -> int:
         return self.coorb.n_max
-    
+
     def __init__(
         self,
         mode_list: list[tuple[int, int]] = NRSUR7DQ4_MODES,
@@ -280,7 +290,8 @@ class NRSur7dq4DataLoader(eqx.Module):
             bfOrder = node_data["nodeModelers"][f"bfOrders_{count}"]
 
             coefs.append(jnp.pad(coef, (0, n_max - len(coef))))
-            bfOrders.append(jnp.pad(bfOrder, ((0, n_max - len(bfOrder)), (0, 0))))
+            bfOrders.append(
+                jnp.pad(bfOrder, ((0, n_max - len(bfOrder)), (0, 0))))
 
         result["predictors"] = make_polypredictor_ensemble(
             jnp.array(coefs), jnp.array(bfOrders), n_max
@@ -315,9 +326,9 @@ class NRSur7dq4DataLoader(eqx.Module):
             result["imag_plus"] = self.read_mode_function(
                 file[f"hCoorb_{mode[0]}_{mode[1]}_imag"], n_max
             )
-            
+
             node_data = {
-                'nodeModelers': {"coefs_0": jnp.array([0]), 'bfOrders_0': jnp.zeros((0,7))},
+                'nodeModelers': {"coefs_0": jnp.array([0]), 'bfOrders_0': jnp.zeros((0, 7))},
                 'nodeIndices': jnp.array([0]),
                 'EIBasis': jnp.array([0]),
             }
