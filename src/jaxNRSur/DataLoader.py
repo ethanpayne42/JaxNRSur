@@ -40,12 +40,14 @@ def download_from_zenodo(url: str, local_filename: str) -> bool:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:  # Filter out keep-alive chunks
                     f.write(chunk)
-        logging.info(f"File downloaded successfully and saved as {
-            local_filename}")
+        logging.info(
+            f"File downloaded successfully and saved as {local_filename}"
+        )
         return True
     else:
-        logging.warning(f"Failed to download the file. Status code: {
-            response.status_code}")
+        logging.warning(
+            f"Failed to download the file. Status code: {response.status_code}"
+        )
         return False
 
 
@@ -279,16 +281,26 @@ class NRSur7dq4DataLoader(eqx.Module):
 
     @staticmethod
     def read_mode_function(node_data: dict, n_max: int) -> dict:
+        """Load an individual strain data piece and convert it to a 
+        polynomial predictor.
+
+        Arguments
+        ---------
+        node_data : dict
+            Dictionary containing the data.
+        n_max : int
+            Maximum polynomial order.
+        """
         result = {}
-        n_nodes = len(node_data["nodeIndices"])  # type: ignore
-        result["n_nodes"] = n_nodes
+        result["n_nodes"] = len(node_data["nodeIndices"])  # type: ignore
 
         coefs = []
         bfOrders = []
 
-        for count in range(n_nodes):  # n_nodes is the n which you iterate over
-            coef = node_data["nodeModelers"][f"coefs_{count}"]
-            bfOrder = node_data["nodeModelers"][f"bfOrders_{count}"]
+        # TODO: explain what this does
+        for n in range(result["n_nodes"]):
+            coef = node_data["nodeModelers"][f"coefs_{n}"]
+            bfOrder = node_data["nodeModelers"][f"bfOrders_{n}"]
 
             coefs.append(jnp.pad(coef, (0, n_max - len(coef))))
             bfOrders.append(
@@ -297,7 +309,17 @@ class NRSur7dq4DataLoader(eqx.Module):
         result["predictors"] = make_polypredictor_ensemble(
             jnp.array(coefs), jnp.array(bfOrders), n_max
         )
+        # EIM basis has shape (n_nodes, n_time) where the length of the
+        # time grid is n_time = 2000, the time grid is not uniformly
+        # spaced (see App. B of https://arxiv.org/pdf/1705.07089)
+        # n_nodes is the number of empirical time nodes, which are a subset of 
+        # the 2000 coorbital frame times
+        # NOTE: the number of empirical time nodes is the same as the number
+        # of basis functions
         result["eim_basis"] = jnp.array(node_data["EIBasis"])
+        
+        # node_indices is a list of the indices of the empirical time nodes
+        # in the full 2000-length time
         result['node_indices'] = jnp.array(node_data["nodeIndices"])
         return result
 
@@ -321,6 +343,17 @@ class NRSur7dq4DataLoader(eqx.Module):
         """
         result = {}
         if mode[1] > 0:
+            # the nonzero |m| modes coorbital-frame strain data is stored in
+            # two pieces, labeled "plus" and "minus" and defined as:
+            #   h^{ell,|m|}_{+/-} = (h^{ell,-|m|} +/- i h^{ell,|m|}*) / 2
+            # where all h's above are in the coorbital frame.
+            # the file represents these complex plus/minus pieces through their
+            # real and imaginary parts separately
+            #
+            # See Eq. (17) in https://arxiv.org/pdf/1705.07089 
+            # or Eq. (6) in https://arxiv.org/pdf/1905.09300
+            # and update switching -|m| <-> |m| in
+            # https://github.com/sxs-collaboration/gwsurrogate/blob/55dfadb9e62de0f1ae0c9d69c72e49b00a760d85/gwsurrogate/new/precessing_surrogate.py#L714
             result["real_plus"] = NRSur7dq4DataLoader.read_mode_function(
                 data[f"hCoorb_{mode[0]}_{mode[1]}_Re+"], n_max
             )
@@ -333,20 +366,22 @@ class NRSur7dq4DataLoader(eqx.Module):
             result["imag_minus"] = NRSur7dq4DataLoader.read_mode_function(
                 data[f"hCoorb_{mode[0]}_{mode[1]}_Im-"], n_max
             )
-        else:
+        elif mode[1] == 0:
+            # for the m=0 modes, we only have one complex data piece;
+            # to keep the structure the same as for the other modes, we
+            # to label this "plus" and create a fiducial "minus" piece
+            # that is just a zero array
             result["real_plus"] = NRSur7dq4DataLoader.read_mode_function(
                 data[f"hCoorb_{mode[0]}_{mode[1]}_real"], n_max
             )
-            # result['real_minus'] = 0
-            # TODO Make the structure of the m=0 modes similar
-            # to handle in the same way as m != 0
 
             result["imag_plus"] = NRSur7dq4DataLoader.read_mode_function(
                 data[f"hCoorb_{mode[0]}_{mode[1]}_imag"], n_max
             )
 
             node_data = {
-                'nodeModelers': {"coefs_0": jnp.array([0]), 'bfOrders_0': jnp.zeros((0, 7))},
+                'nodeModelers': {"coefs_0": jnp.array([0]),
+                                 'bfOrders_0': jnp.zeros((0, 7))},
                 'nodeIndices': jnp.array([0]),
                 'EIBasis': jnp.array([0]),
             }
@@ -356,6 +391,8 @@ class NRSur7dq4DataLoader(eqx.Module):
             result["imag_minus"] = NRSur7dq4DataLoader.read_mode_function(
                 node_data, 1
             )
+        else:
+            raise ValueError(f"Invalid mode (m < 0): {mode}")
 
         result["mode"] = mode
 

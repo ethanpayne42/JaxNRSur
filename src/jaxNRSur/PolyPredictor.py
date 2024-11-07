@@ -4,6 +4,7 @@ import equinox as eqx
 
 
 class PolyPredictor(eqx.Module):
+    # TODO: document this class
     coefs: Float[Array, " n_sum"]
     bfOrders: Float[Array, " n_sum n_lambda"]
     n_max: Int

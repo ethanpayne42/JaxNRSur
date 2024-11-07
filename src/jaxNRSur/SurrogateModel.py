@@ -228,7 +228,8 @@ class NRSur7dq4Model(eqx.Module):
     data : NRSur7dq4DataLoader
         Data loader for the NRSur7dq4 data.
     mode_list_dict : dict
-        Dictionary mapping mode tuple to index, for nonnegative modes.
+        Dictionary mapping mode tuple to index, for nonnegative ``m`` modes;
+        the modes are indexed in order as (ell, m), (ell, -m), ...
     mode_list_dict_extended : dict
         Dictionary mapping mode tuple to index, including negative
         ``m`` modes.
@@ -263,24 +264,21 @@ class NRSur7dq4Model(eqx.Module):
         self.harmonics = []
 
         self.n_modes = len(mode_list)
-        self.mode_list_dict = {}
-        for i, mode in enumerate(mode_list):
-            self.mode_list_dict[mode] = i
-
+        self.mode_list_dict = {mode: i for i, mode in enumerate(mode_list)}
         self.mode_list_dict_extended = {}
+        
         idx = 0
-        for i, mode in enumerate(mode_list):
+        for mode in mode_list:
             self.mode_list_dict_extended[mode] = idx
             idx += 1
 
             if mode[1] > 0:
-                negative_mode = (mode[0], -mode[1])
-                self.mode_list_dict_extended[negative_mode] = idx
+                self.mode_list_dict_extended[(mode[0], -mode[1])] = idx
                 idx += 1
 
-        self.n_modes_extended = len(self.mode_list_dict_extended.keys())
+        self.n_modes_extended = len(self.mode_list_dict_extended)
 
-        for mode in list(self.mode_list_dict_extended.keys()):
+        for mode in self.mode_list_dict_extended.keys():
             self.harmonics.append(
                 SpinWeightedSphericalHarmonics(-2, mode[0], mode[1]))
 
@@ -430,7 +428,23 @@ class NRSur7dq4Model(eqx.Module):
         return jnp.dot(evaluate_ensemble(predictor, lambdas), eim_basis)
 
     def get_coorb_hlm(self, lambdas, mode=(2, 2)):
+        """Get the coorbital frame h_{ell,+|m|} and h_{ell,-|m|}
+        for a given (ell, |m|) index.
 
+        The Ylm modes are obtained starting from the NRSur data pieces,
+        namely h_{ell,real_plus}, h_{ell,imag_plus}, h_{ell,real_minus},
+        h_{ell,imag_minus} where "plus" and "minus" refers to the 
+        sum and difference of the +|m| and -|m| modes.
+
+        See Eq. 6 in https://arxiv.org/pdf/1905.09300.pdf for details.
+
+        Arguments
+        ---------
+        lambdas : Float[Array, " n_dim"]
+            Lambda parameters for the EIM basis.
+        mode : tuple[int, int], optional
+            Mode index (ell, |m|), defaults to (2, 2).
+        """
         # surrogate is built on the symmetric (sum) and antisymmetric (diff)
         # combinations of the +|m| and -|m| modes
         # (although they are confusingly labeled "plus" and "minus" in
@@ -462,8 +476,9 @@ class NRSur7dq4Model(eqx.Module):
         # but it used to be zero
         # NOTE: Ethan (10/6/24), changing this code following:
         # https://github.com/sxs-collaboration/gwsurrogate/blob/55dfadb9e62de0f1ae0c9d69c72e49b00a760d85/gwsurrogate/new/precessing_surrogate.py#L714
-        h_lm_plus = jnp.conj(h_lm_sum - h_lm_diff)*(jnp.abs(h_lm_diff) > 1e-12) + h_lm_sum*(jnp.abs(h_lm_diff) < 1e-12) #(h_lm_sum + jnp.conj(h_lm_diff)) / 2
-        h_lm_minus = (h_lm_sum + h_lm_diff)*(jnp.abs(h_lm_diff) > 1e-12) #(h_lm_sum - jnp.conj(h_lm_diff)) / 2
+        # TODO: Ethan please explain this 1E-12 thing
+        h_lm_plus = jnp.conj(h_lm_sum - h_lm_diff)*(jnp.abs(h_lm_diff) > 1e-12) + h_lm_sum*(jnp.abs(h_lm_diff) < 1e-12)
+        h_lm_minus = (h_lm_sum + h_lm_diff)*(jnp.abs(h_lm_diff) > 1e-12)
 
         return h_lm_plus, h_lm_minus
 
@@ -550,9 +565,26 @@ class NRSur7dq4Model(eqx.Module):
         theta: float = 0.0,
         phi: float = 0.0,
         # quaternions
-        init_quat: Float[Array, " n_quat"] = jnp.array([1.0, 0.0, 0.0, 0.0]),
+        init_quaternion: Float[Array, " n_quat"] = jnp.array([1.0, 0.0, 0.0, 0.0]),
         init_orb_phase: float = 0.0,
     ) -> tuple((Float[Array, " n_sample"], Float[Array, " n_sample"])):
+        """Get waveform.
+
+        Arguments
+        ---------
+        time : Float[Array, " n_sample"]
+            Time grid.
+        params : Float[Array, " n_dim"]
+            Source parameters: q, chiA_0, chiA_1, chiA_2, chiB_0, chiB_1, chiB_2.
+        theta : float, optional
+            Polar angle, defaults to 0.0.
+        phi : float, optional
+            Azimuthal angle, defaults to 0.0.
+        init_quaternion : Float[Array, " n_quat"], optional
+            Initial quaternion, defaults to [1.0, 0.0, 0.0, 0.0].
+        init_orb_phase : float, optional
+            Initial orbital phase, defaults to 0.0.
+        """
         # TODO set up the appropriate t_low etc
 
         # Initialize Omega with structure:
@@ -560,7 +592,7 @@ class NRSur7dq4Model(eqx.Module):
         # Note that the spins are in the coprecessing frame
         q = params[0]
         Omega_0 = jnp.concatenate(
-            [init_quat, jnp.array([init_orb_phase]), params[1:]])
+            [init_quaternion, jnp.array([init_orb_phase]), params[1:]])
 
         normA = jnp.linalg.norm(params[1:4])
         normB = jnp.linalg.norm(params[4:7])
