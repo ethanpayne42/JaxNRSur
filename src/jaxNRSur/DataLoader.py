@@ -6,6 +6,8 @@ import equinox as eqx
 from jaxtyping import Array, Float
 import requests
 import os
+import logging
+import numpy as np
 
 
 h5_mode_tuple: dict[tuple[int, int], str] = {
@@ -38,11 +40,12 @@ def download_from_zenodo(url: str, local_filename: str) -> bool:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:  # Filter out keep-alive chunks
                     f.write(chunk)
-        print(f"File downloaded successfully and saved as {local_filename}")
+        logging.info(f"File downloaded successfully and saved as {
+            local_filename}")
         return True
     else:
-        print(f"Failed to download the file. Status code: {
-              response.status_code}")
+        logging.warning(f"Failed to download the file. Status code: {
+            response.status_code}")
         return False
 
 
@@ -50,17 +53,17 @@ def load_data(url: str, local_filename: str) -> h5py.File:
     home_directory = os.environ["HOME"]
     os.makedirs(home_directory+"/.jaxNRSur", exist_ok=True)
     try:
-        print("Try loading file from cache")
+        logging.info("Try loading file from cache")
         data = h5py.File(home_directory + "/.jaxNRSur/" + local_filename, "r")
-        print("Cache found and loading data")
+        logging.info("Cache found and loading data")
     except:
-        print("Cache not found, downloading from Zenodo")
+        logging.info("Cache not found, downloading from Zenodo")
         downloaded = download_from_zenodo(
             url,
             home_directory + "/.jaxNRSur/"+local_filename,
         )
         if downloaded:
-            print("Download successful, loading data")
+            logging.info("Download successful, loading data")
             data = h5py.File(home_directory + "/.jaxNRSur/" +
                              local_filename, "r")
         else:
@@ -220,6 +223,7 @@ class NRSur7dq4DataLoader(eqx.Module):
     coorb_nmax : int
         Maximum polynomial order for the coorbital-frame data.
     """
+    # MAX: why aren't these just np.ndarrays?
     t_coorb: Float[Array, " n_sample"]
     t_ds: Float[Array, " n_dynam"]
     diff_t_ds: Float[Array, " n_dynam"]
@@ -234,8 +238,7 @@ class NRSur7dq4DataLoader(eqx.Module):
     def __init__(
         self,
         mode_list: list[tuple[int, int]] = NRSUR7DQ4_MODES,
-        # I'm pretty sure we don't need the download=1
-        url: str = "https://zenodo.org/records/3348115/files/NRSur7dq4.h5?download=1",
+        url: str = "https://zenodo.org/records/3348115/files/NRSur7dq4.h5",
     ) -> None:
         f"""
         Initialize the data loader for the NRSur7dq4 model
@@ -268,16 +271,14 @@ class NRSur7dq4DataLoader(eqx.Module):
                     )
 
         # load data for each nonnegative-m mode
-        self.modes = []
-        for m in mode_list:
-            self.modes.append(
-                self.read_single_mode(data, m, n_max=basis_nmax)
-            )
-
+        self.modes = [self.read_single_mode(data, m, n_max=basis_nmax) 
+                      for m in mode_list]
+        
         # load data for the coorbital-frame evolution
         self.coorb = self.read_coorb(data, coorb_nmax)
 
-    def read_mode_function(self, node_data: dict, n_max: int) -> dict:
+    @staticmethod
+    def read_mode_function(node_data: dict, n_max: int) -> dict:
         result = {}
         n_nodes = len(node_data["nodeIndices"])  # type: ignore
         result["n_nodes"] = n_nodes
@@ -300,31 +301,48 @@ class NRSur7dq4DataLoader(eqx.Module):
         result['node_indices'] = jnp.array(node_data["nodeIndices"])
         return result
 
-    def read_single_mode(self, file: dict, mode: tuple[int, int], n_max: int) -> dict:
+    @staticmethod
+    def read_single_mode(data: dict, mode: tuple[int, int], n_max: int) -> dict:
+        """Load data for a single (ell, |m|) mode.
+
+        Arguments
+        ---------
+        data : dict
+            Dictionary containing the data.
+        mode : tuple[int, int]
+            Tuple representing the mode to load.
+        n_max : int
+            Maximum polynomial order.
+
+        Returns
+        -------
+        result : dict
+            Dictionary containing the mode data.
+        """
         result = {}
         if mode[1] > 0:
-            result["real_plus"] = self.read_mode_function(
-                file[f"hCoorb_{mode[0]}_{mode[1]}_Re+"], n_max
+            result["real_plus"] = NRSur7dq4DataLoader.read_mode_function(
+                data[f"hCoorb_{mode[0]}_{mode[1]}_Re+"], n_max
             )
-            result["imag_plus"] = self.read_mode_function(
-                file[f"hCoorb_{mode[0]}_{mode[1]}_Im+"], n_max
+            result["imag_plus"] = NRSur7dq4DataLoader.read_mode_function(
+                data[f"hCoorb_{mode[0]}_{mode[1]}_Im+"], n_max
             )
-            result["real_minus"] = self.read_mode_function(
-                file[f"hCoorb_{mode[0]}_{mode[1]}_Re-"], n_max
+            result["real_minus"] = NRSur7dq4DataLoader.read_mode_function(
+                data[f"hCoorb_{mode[0]}_{mode[1]}_Re-"], n_max
             )
-            result["imag_minus"] = self.read_mode_function(
-                file[f"hCoorb_{mode[0]}_{mode[1]}_Im-"], n_max
+            result["imag_minus"] = NRSur7dq4DataLoader.read_mode_function(
+                data[f"hCoorb_{mode[0]}_{mode[1]}_Im-"], n_max
             )
         else:
-            result["real_plus"] = self.read_mode_function(
-                file[f"hCoorb_{mode[0]}_{mode[1]}_real"], n_max
+            result["real_plus"] = NRSur7dq4DataLoader.read_mode_function(
+                data[f"hCoorb_{mode[0]}_{mode[1]}_real"], n_max
             )
             # result['real_minus'] = 0
             # TODO Make the structure of the m=0 modes similar
-            # to hangle in the same way as m != 0
+            # to handle in the same way as m != 0
 
-            result["imag_plus"] = self.read_mode_function(
-                file[f"hCoorb_{mode[0]}_{mode[1]}_imag"], n_max
+            result["imag_plus"] = NRSur7dq4DataLoader.read_mode_function(
+                data[f"hCoorb_{mode[0]}_{mode[1]}_imag"], n_max
             )
 
             node_data = {
@@ -332,10 +350,10 @@ class NRSur7dq4DataLoader(eqx.Module):
                 'nodeIndices': jnp.array([0]),
                 'EIBasis': jnp.array([0]),
             }
-            result["real_minus"] = self.read_mode_function(
+            result["real_minus"] = NRSur7dq4DataLoader.read_mode_function(
                 node_data, 1
             )
-            result["imag_minus"] = self.read_mode_function(
+            result["imag_minus"] = NRSur7dq4DataLoader.read_mode_function(
                 node_data, 1
             )
 
