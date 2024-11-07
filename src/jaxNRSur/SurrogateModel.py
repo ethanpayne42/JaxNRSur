@@ -462,11 +462,8 @@ class NRSur7dq4Model(eqx.Module):
         # but it used to be zero
         # NOTE: Ethan (10/6/24), changing this code following:
         # https://github.com/sxs-collaboration/gwsurrogate/blob/55dfadb9e62de0f1ae0c9d69c72e49b00a760d85/gwsurrogate/new/precessing_surrogate.py#L714
-        # (h_lm_sum + jnp.conj(h_lm_diff)) / 2
-        h_lm_plus = jnp.conj(h_lm_sum - h_lm_diff)
-        h_lm_minus = (h_lm_sum + h_lm_diff)*(jnp.abs(h_lm_diff) >
-                                             # (h_lm_sum - jnp.conj(h_lm_diff)) / 2
-                                             1e-12)
+        h_lm_plus = jnp.conj(h_lm_sum - h_lm_diff)*(jnp.abs(h_lm_diff) > 1e-12) + h_lm_sum*(jnp.abs(h_lm_diff) < 1e-12) #(h_lm_sum + jnp.conj(h_lm_diff)) / 2
+        h_lm_minus = (h_lm_sum + h_lm_diff)*(jnp.abs(h_lm_diff) > 1e-12) #(h_lm_sum - jnp.conj(h_lm_diff)) / 2
 
         return h_lm_plus, h_lm_minus
 
@@ -524,8 +521,8 @@ class NRSur7dq4Model(eqx.Module):
             (quat_inv.shape[0],  self.n_modes_extended), dtype=complex)
 
         # Handling the if statements, additionally using. a Dirac delta to ensure the ells match
-        ell, m = mode
-        for (ell_p, m_p), i in self.mode_list_dict_extended.items():
+        ell_p, m_p = mode
+        for (ell, m), i in self.modelist_dict_extended.items():
 
             matrix_coefs = matrix_coefs.at[i2, i].set(float(
                 ell_p == ell) * float(m_p == -m) * R_B[i2] ** (2 * m) * (-1) ** (ell + m - 1))
@@ -627,8 +624,8 @@ class NRSur7dq4Model(eqx.Module):
 
         # Sum along the N_modes axis with the spherical harmonics to generate strain as function of time
         inertial_h = jnp.zeros(len(self.data.t_coorb), dtype=complex)
-        for idx in self.mode_list_dict_extended.values():
-            inertial_h += self.harmonics[idx](theta,
-                                              phi) * inertial_h_lms[:, idx]
+        for idx in self.modelist_dict_extended.values():
+            # Note the LAL convention for the phasing
+            inertial_h += self.harmonics[idx](theta, jnp.pi/2 - phi) * inertial_h_lms[:,idx]
 
         return inertial_h, Omega_interp
