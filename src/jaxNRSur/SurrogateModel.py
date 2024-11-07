@@ -522,7 +522,7 @@ class NRSur7dq4Model(eqx.Module):
 
         # Handling the if statements, additionally using. a Dirac delta to ensure the ells match
         ell_p, m_p = mode
-        for (ell, m), i in self.modelist_dict_extended.items():
+        for (ell, m), i in self.mode_list_dict_extended.items():
 
             matrix_coefs = matrix_coefs.at[i2, i].set(float(
                 ell_p == ell) * float(m_p == -m) * R_B[i2] ** (2 * m) * (-1) ** (ell + m - 1))
@@ -624,7 +624,7 @@ class NRSur7dq4Model(eqx.Module):
 
         # Sum along the N_modes axis with the spherical harmonics to generate strain as function of time
         inertial_h = jnp.zeros(len(self.data.t_coorb), dtype=complex)
-        for idx in self.modelist_dict_extended.values():
+        for idx in self.mode_list_dict_extended.values():
             # Note the LAL convention for the phasing
             inertial_h += self.harmonics[idx](theta, jnp.pi/2 - phi) * inertial_h_lms[:,idx]
 
